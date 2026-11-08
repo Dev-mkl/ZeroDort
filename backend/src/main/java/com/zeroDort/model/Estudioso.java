@@ -26,4 +26,12 @@ public class Estudioso {
 
     @Column(nullable = false, length = 150)
     private String descricao;
+
+    @Column(nullable = false)
+    private Boolean disponivel;
+
+    @PrePersist
+    public void prePersist() {
+        this.disponivel = true;
+    }
 }
