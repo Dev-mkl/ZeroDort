@@ -26,4 +26,9 @@ public class EstudiosoService {
         estudiosoRepository.save(estudioso);
         return true;
     }
+
+    public Estudioso buscarEstudioso(Short estudiosoId) {
+        return estudiosoRepository.findById(estudiosoId)
+                .orElseThrow(() -> new RuntimeException("Estudioso não encontrado!"));
+    }
 }

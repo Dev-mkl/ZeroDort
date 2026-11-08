@@ -17,6 +17,16 @@ public class ChaveAcessoService {
         return chaveAcessoRepository.findAllByUtilizada(false);
     }
 
+    public boolean marcarChaveUtilizada(Short id) {
+        ChaveAcesso chaveAcesso = chaveAcessoRepository.findById(id).orElseThrow(
+                () -> new RuntimeException("Chave de acesso não encontrada")
+        );
+
+        chaveAcesso.setUtilizada(true);
+        chaveAcessoRepository.save(chaveAcesso);
+        return true;
+    }
+
     /*public boolean cadastrarChaveAcesso(ChaveAcessoRequest chaveAcessoRequest){
         ChaveAcesso chaveAcesso = ChaveAcesso.builder()
                 .codigo(chaveAcessoRequest.codigo())

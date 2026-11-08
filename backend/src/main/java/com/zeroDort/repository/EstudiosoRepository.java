@@ -8,6 +8,6 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface EstudiosoRepository extends JpaRepository<Estudioso, Long> {
+public interface EstudiosoRepository extends JpaRepository<Estudioso, Short> {
     List<Estudioso> findAllByDisponivel(Boolean disponivel);
 }
