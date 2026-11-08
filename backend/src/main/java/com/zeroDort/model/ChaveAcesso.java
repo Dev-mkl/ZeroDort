@@ -21,4 +21,9 @@ public class ChaveAcesso {
 
     @Column(nullable = false)
     private Boolean utilizada;
+
+    @PrePersist
+    public void prePersist() {
+        utilizada = false;
+    }
 }
