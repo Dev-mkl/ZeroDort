@@ -218,10 +218,21 @@
             </div>
             <div class="res-nota" id="res-nota"><b>0.0</b><span>de 10</span></div>
           </div>
+          
           <div class="alerta" id="res-alerta" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l10 18H2zM12 10v5M12 18v.5"/></svg>
             <div><b>Alerta crítico para LER/DORT.</b> Você relatou formigamento ou dormência em punhos/mãos. Procure um médico do trabalho ou fisioterapeuta.</div>
           </div>
+
+          <!-- NOVO BLOCO: Exibe os dados vindos do Backend (Chave e Ranking) -->
+          <div class="alerta" id="res-alerta-chave" hidden style="background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.45); color: var(--texto); margin-top: 10px;">
+            <svg viewBox="0 0 24 24" aria-hidden="true" style="color: var(--acento);"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <div>
+              <b>Sua chave de acesso é: <span id="res-chave" style="color: var(--acento); font-size: 1.1rem;"></span></b><br>
+              Você está na posição <b id="res-posicao"></b> do ranking!
+            </div>
+          </div>
+
           <div class="res-blocos" id="res-blocos"></div>
           <h3>Recomendações para você</h3>
           <ol class="recomendacoes" id="res-recomendacoes"></ol>

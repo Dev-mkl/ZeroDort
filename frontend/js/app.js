@@ -1,5 +1,5 @@
 /* =========================================================
-   LÓGICA DA APLICAÇÃO (telas, questionário, pontuação)
+   LÓGICA DA APLICAÇÃO (telas, questionário, pontuação e integração API)
    ========================================================= */
 (function () {
   'use strict';
@@ -7,6 +7,7 @@
   /* >>> Troque pelo link do repositório do grupo <<< */
   const CONFIG = {
     repositorio: 'https://github.com/Dev-mkl/ZeroDort',
+    apiUrl: 'http://localhost:8080' // URL do seu backend Spring Boot
   };
 
   const NOMES_SEV = ['OK', 'Atenção', 'Alto', 'Crítico'];
@@ -28,6 +29,7 @@
     respostas: {},        // P1: índice | P9: [índices]
     cena: null,
     tela: 'inicio',
+    resultadoBackend: null // NOVO: Guarda a resposta da API (chave, score, posicao)
   };
 
   /* ================= INÍCIO ================= */
@@ -41,6 +43,7 @@
     app.nome = nome;
     app.idx = 0;
     app.respostas = {};
+    app.resultadoBackend = null;
     $('.lat-btn[data-ir="resultado"]').disabled = true;
     $('#nome-usuario').textContent = nome;
     $('#ini-usuario').textContent = nome.charAt(0).toUpperCase();
@@ -205,15 +208,83 @@
   $('#btn-voltar').addEventListener('click', () => {
     if (app.idx > 0) { app.idx--; renderPergunta(); }
   });
+  
   $('#btn-proxima').addEventListener('click', avancar);
 
-  function avancar() {
+  // ==========================================
+  // INTEGRAÇÃO COM O BACKEND (MODIFICADO AQUI)
+  // ==========================================
+  async function avancar() {
     const q = QUESTOES[app.idx];
     if (!respondida(q)) return;
-    if (app.idx < QUESTOES.length - 1) { app.idx++; renderPergunta(); }
-    else {
-      $('.lat-btn[data-ir="resultado"]').disabled = false;
-      irPara('resultado');
+    
+    if (app.idx < QUESTOES.length - 1) { 
+      app.idx++; 
+      renderPergunta(); 
+    } else {
+      // Chegou na última pergunta. Prepara o envio para o Spring Boot.
+      const btn = $('#btn-proxima');
+      const htmlOriginal = btn.innerHTML;
+      btn.innerHTML = 'Salvando...';
+      btn.disabled = true;
+
+      // 1. Monta a lista de perguntas no formato que o DTO Java espera
+      const perguntasPayload = [];
+      
+      QUESTOES.forEach(perguntaObj => {
+          const resposta = app.respostas[perguntaObj.id];
+          if (resposta !== undefined) {
+              if (perguntaObj.multipla) {
+                  resposta.forEach(idxOpcao => {
+                      const opc = perguntaObj.opcoes[idxOpcao];
+                      perguntasPayload.push({
+                          pergunta: perguntaObj.id,
+                          regiao: Object.keys(opc.regioes)[0] || "geral", // Pega a primeira região (ex: "lombar")
+                          pontuacao: opc.pts
+                      });
+                  });
+              } else {
+                  const opc = perguntaObj.opcoes[resposta];
+                  perguntasPayload.push({
+                      pergunta: perguntaObj.id,
+                      regiao: Object.keys(opc.regioes)[0] || "geral",
+                      pontuacao: opc.pts
+                  });
+              }
+          }
+      });
+
+      // 2. Monta o objeto igual ao seu AvaliacaoRequest.java
+      const payload = {
+          estudiosoId: 1, // ID fixo criado no DataInitializer.java
+          perguntas: perguntasPayload
+      };
+
+      try {
+          // 3. Faz a requisição HTTP para o backend
+          const response = await fetch(`${CONFIG.apiUrl}/avaliacao`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) throw new Error('Falha ao salvar no servidor');
+
+          // Recebe { chave, score, posicao }
+          const data = await response.json(); 
+          app.resultadoBackend = data;
+
+          $('.lat-btn[data-ir="resultado"]').disabled = false;
+          irPara('resultado');
+
+      } catch (error) {
+          console.error("Erro na integração:", error);
+          alert('Erro: Não foi possível salvar a avaliação. Verifique se o backend Spring Boot está rodando na porta 8080.');
+      } finally {
+          // Restaura o botão
+          btn.innerHTML = htmlOriginal;
+          btn.disabled = false;
+      }
     }
   }
 
@@ -407,6 +478,16 @@
     nota.querySelector('b').style.color = r.faixa.cor;
     $('#res-alerta').hidden = !r.alerta;
 
+    // NOVO: Exibe os dados vindos do backend (Chave e Posição)
+    if (app.resultadoBackend) {
+        const alertaChave = $('#res-alerta-chave');
+        if(alertaChave) {
+            alertaChave.hidden = false;
+            $('#res-chave').textContent = app.resultadoBackend.chave;
+            $('#res-posicao').textContent = app.resultadoBackend.posicao + 'º';
+        }
+    }
+
     // resumo por bloco
     const blocos = $('#res-blocos');
     blocos.innerHTML = '';
@@ -449,7 +530,9 @@
   }
 
   $('#btn-refazer').addEventListener('click', () => {
-    app.respostas = {}; app.idx = 0;
+    app.respostas = {}; 
+    app.idx = 0;
+    app.resultadoBackend = null; // Limpa os dados do backend
     $('.lat-btn[data-ir="resultado"]').disabled = true;
     atualizarTudo();
     irPara('quiz');
