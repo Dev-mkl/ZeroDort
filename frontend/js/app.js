@@ -7,7 +7,7 @@
   /* >>> Troque pelo link do repositório do grupo <<< */
   const CONFIG = {
     repositorio: 'https://github.com/Dev-mkl/ZeroDort',
-    apiUrl: 'http://localhost:8080/api' // URL base inclui o context-path configurado no backend
+    apiUrl: 'https://zerodort.onrender.com/api'
   };
 
   const NOMES_SEV = ['OK', 'Atenção', 'Alto', 'Crítico'];
