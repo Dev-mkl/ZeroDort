@@ -39,7 +39,7 @@ public class Modelo {
     private Corpo corpo;
 
     @Column(nullable = false)
-    private Short pontuacao;
+    private Double pontuacao;
 
     @Column(nullable = false)
     private LocalDateTime dataAvaliacao;

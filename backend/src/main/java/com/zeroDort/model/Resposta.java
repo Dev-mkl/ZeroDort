@@ -17,6 +17,7 @@ public class Resposta {
     @Column(nullable = false)
     private String resposta;
 
+    @ManyToOne
     @JoinColumn(name = "pergunta_id", nullable = false)
     private Pergunta pergunta;
 

@@ -16,7 +16,7 @@ public class UsuarioService {
     @Autowired
     private UsuarioRepository usuarioRepository;
 
-    public Usuario cadastrarUsuario(Estudioso estudioso, ChaveAcesso chaveAcesso, Short score) {
+    public Usuario cadastrarUsuario(Estudioso estudioso, ChaveAcesso chaveAcesso, Double score) {
         Usuario usuario = Usuario.builder()
                 .estudioso(estudioso)
                 .chaveAcesso(chaveAcesso)

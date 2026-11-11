@@ -15,11 +15,11 @@ public class PerguntaCorpo {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int perguntaCorpoId;
 
-    @OneToMany(cascade = CascadeType.ALL)
+    @ManyToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "pergunta_id", nullable = false)
     private Pergunta pergunta;
 
-    @OneToMany(cascade = CascadeType.ALL)
+    @ManyToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "corpo_id", nullable = false)
     private Corpo corpo;
 }
