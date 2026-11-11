@@ -1,7 +1,7 @@
 package com.zeroDort.dto;
 
 public record AvaliacaoResponse(
-        Short estudiosoId,
+        Short usuarioId,
         String chaveDeAcesso,
         Double scoreGlobal,
         Short posicao

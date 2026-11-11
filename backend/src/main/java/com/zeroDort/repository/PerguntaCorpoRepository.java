@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface PerguntaCorpoRepository extends JpaRepository<PerguntaCorpo, Integer> {
     List<PerguntaCorpo> findAllByPergunta_PerguntaId(Short perguntaId);
+
+    boolean existsByPergunta_PerguntaIdAndCorpo_Id(Short perguntaId, Short corpoId);
 }

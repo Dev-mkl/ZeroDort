@@ -1,7 +1,7 @@
 # ErgoRisk 3D — Avaliador de Risco Ergonômico LER/DORT
 
-Front-end (sem back-end) de um questionário de saúde ocupacional com um **avatar 3D** que
-reproduz a postura da pessoa conforme as respostas.
+Front-end do questionário de saúde ocupacional ErgoRisk, integrado à API Spring Boot, com um
+**avatar 3D** que reproduz a postura da pessoa conforme as respostas.
 
 ## Como abrir
 
@@ -13,7 +13,8 @@ reproduz a postura da pessoa conforme as respostas.
 1. **Tela inicial:** explicação sobre LER/DORT, campo de nome, botão para começar e link para o repositório.
 2. **Questionário:** boneco 3D em cima e pergunta embaixo. Cada resposta muda a postura e o cenário
    (cadeira, apoio de pés, mesa, notebook/monitor, telefone, braços, pausas, pontos de dor).
-   À direita ficam o termômetro de risco (0–10), o gráfico de evolução e o mapa de regiões.
+   As perguntas condicionais mantêm os códigos P1–P13 no envio à API. À direita ficam o
+   termômetro de risco (0–100), o gráfico de evolução e o mapa de regiões.
 3. **Resultado:** nota final, classificação, resumo por bloco, recomendações e pausa ativa animada.
 
 ## Estrutura
@@ -30,9 +31,10 @@ reproduz a postura da pessoa conforme as respostas.
 ## Personalizar
 
 - **Link do repositório:** `CONFIG.repositorio` no topo de `js/app.js`.
-- **Perguntas/pontos:** edite `js/questoes.js`. A pontuação máxima é calculada sozinha (hoje 205 pts),
-  e a nota vai de 0 a 10. As faixas são: Baixo < 2, Moderado < 4, Alto < 6, Crítico ≥ 6.
-  Formigamento nos punhos força no mínimo "Alto" e mostra um alerta.
+- **Perguntas/pontos:** edite `js/questoes.js`. O score final é limitado a 0–100. As faixas são:
+  baixo (0–20), moderado (21–40), alto (41–60), muito alto (61–80) e crítico (81–100).
+  Sintomas em punhos ou cervical combinados com mais de 25 pontos de mobiliário/equipamentos
+  ativam o alerta crítico.
 
 ## Referências usadas nos rótulos
 

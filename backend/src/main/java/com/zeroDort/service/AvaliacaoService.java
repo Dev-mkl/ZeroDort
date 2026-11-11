@@ -5,11 +5,12 @@ import com.zeroDort.dto.AvaliacaoResponse;
 import com.zeroDort.dto.PerguntaItem;
 import com.zeroDort.model.ChaveAcesso;
 import com.zeroDort.model.Corpo;
-import com.zeroDort.model.Estudioso;
 import com.zeroDort.model.PerguntaCorpo;
 import com.zeroDort.model.Resposta;
+import com.zeroDort.model.RespostaCorpo;
 import com.zeroDort.model.Usuario;
 import com.zeroDort.repository.PerguntaCorpoRepository;
+import com.zeroDort.repository.RespostaCorpoRepository;
 import com.zeroDort.repository.RespostaRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -38,16 +39,19 @@ public class AvaliacaoService {
             "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11"
     );
 
-    @Autowired private EstudiosoService estudiosoService;
     @Autowired private ChaveAcessoService chaveAcessoService;
     @Autowired private UsuarioService usuarioService;
     @Autowired private ModeloService modeloService;
     @Autowired private RespostaRepository respostaRepository;
     @Autowired private PerguntaCorpoRepository perguntaCorpoRepository;
+    @Autowired private RespostaCorpoRepository respostaCorpoRepository;
 
     @Transactional
     public AvaliacaoResponse cadastrarAvaliacao(AvaliacaoRequest avaliacaoRequest) {
-        Estudioso estudioso = estudiosoService.buscarEstudioso(avaliacaoRequest.estudiosoId());
+        String nome = avaliacaoRequest.nome() == null ? "" : avaliacaoRequest.nome().trim();
+        if (nome.isBlank() || nome.length() > 40) {
+            throw new IllegalArgumentException("Informe um nome entre 1 e 40 caracteres.");
+        }
         if (avaliacaoRequest.perguntas() == null || avaliacaoRequest.perguntas().isEmpty()) {
             throw new IllegalArgumentException("A avaliação precisa conter ao menos uma resposta.");
         }
@@ -65,18 +69,14 @@ public class AvaliacaoService {
                 throw new IllegalArgumentException("O código da pergunta é obrigatório.");
             }
 
-            Short respostaId = converterRespostaId(item.RespostaId());
-            if (!respostasEnviadas.add(codigoPergunta + ":" + respostaId)) {
+            String respostaInformada = item.RespostaId();
+            if (!respostasEnviadas.add(codigoPergunta + ":" + normalizarCodigo(respostaInformada))) {
                 throw new IllegalArgumentException(
-                        "A resposta " + respostaId + " foi enviada mais de uma vez para " + codigoPergunta + "."
+                        "A mesma resposta foi enviada mais de uma vez para " + codigoPergunta + "."
                 );
             }
 
-            Resposta resposta = respostaRepository
-                    .findByRespostaIdAndPergunta_Codigo(respostaId, codigoPergunta)
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Resposta " + respostaId + " não encontrada para a pergunta " + codigoPergunta
-                    ));
+            Resposta resposta = buscarResposta(respostaInformada, codigoPergunta);
 
             double pontuacao = resposta.getPontuacao();
             validarPontuacao(pontuacao);
@@ -94,12 +94,23 @@ public class AvaliacaoService {
             pontuacoesPorPergunta.merge(codigoPergunta, pontuacao, Double::sum);
             pontuacaoBrutaTotal += pontuacao;
 
-            List<PerguntaCorpo> regioesAfetadas = perguntaCorpoRepository
-                    .findAllByPergunta_PerguntaId(resposta.getPergunta().getPerguntaId());
-            for (PerguntaCorpo perguntaCorpo : regioesAfetadas) {
-                Corpo corpo = perguntaCorpo.getCorpo();
-                regioesAvaliadas.put(corpo.getId(), corpo);
-                pontuacoesBrutasPorCorpo.merge(corpo.getId(), pontuacao, Double::sum);
+            List<RespostaCorpo> regioesDaResposta = respostaCorpoRepository
+                    .findAllByResposta_RespostaId(resposta.getRespostaId());
+            if (!regioesDaResposta.isEmpty()) {
+                for (RespostaCorpo respostaCorpo : regioesDaResposta) {
+                    registrarPontuacaoRegional(
+                            respostaCorpo.getCorpo(), pontuacao, regioesAvaliadas, pontuacoesBrutasPorCorpo
+                    );
+                }
+            } else if (!respostaCorpoRepository.existsByResposta_Pergunta_PerguntaId(
+                    resposta.getPergunta().getPerguntaId())) {
+                List<PerguntaCorpo> regioesDaPergunta = perguntaCorpoRepository
+                        .findAllByPergunta_PerguntaId(resposta.getPergunta().getPerguntaId());
+                for (PerguntaCorpo perguntaCorpo : regioesDaPergunta) {
+                    registrarPontuacaoRegional(
+                            perguntaCorpo.getCorpo(), pontuacao, regioesAvaliadas, pontuacoesBrutasPorCorpo
+                    );
+                }
             }
         }
 
@@ -123,7 +134,7 @@ public class AvaliacaoService {
         );
 
         ChaveAcesso chaveAcesso = chaveAcessoService.gerarChaveAcesso();
-        Usuario usuario = usuarioService.cadastrarUsuario(estudioso, chaveAcesso, scoreGlobal);
+        Usuario usuario = usuarioService.cadastrarUsuario(nome, chaveAcesso, scoreGlobal);
         if (usuario.getId() != null) {
             chaveAcessoService.marcarChaveUtilizada(usuario.getChaveAcesso().getId());
         }
@@ -132,11 +143,21 @@ public class AvaliacaoService {
         modeloService.cadastrarModelo(usuario, pontuacoesPorRegiao);
 
         return new AvaliacaoResponse(
-                estudioso.getId(),
+                usuario.getId(),
                 usuario.getChaveAcesso().getCodigo(),
                 scoreGlobal,
                 posicao
         );
+    }
+
+    private void registrarPontuacaoRegional(
+            Corpo corpo,
+            double pontuacao,
+            Map<Short, Corpo> regioesAvaliadas,
+            Map<Short, Double> pontuacoesBrutasPorCorpo
+    ) {
+        regioesAvaliadas.put(corpo.getId(), corpo);
+        pontuacoesBrutasPorCorpo.merge(corpo.getId(), pontuacao, Double::sum);
     }
 
     private List<SinergiaAtivada> avaliarSinergias(
@@ -251,6 +272,7 @@ public class AvaliacaoService {
             case "lombar" -> nome.contains("LOMBAR");
             case "ombros" -> nome.contains("OMBRO") || nome.contains("TRAPEZIO");
             case "punhos" -> nome.contains("PUNHO") || nome.contains("MAO");
+            case "cotovelos" -> nome.contains("COTOVELO") || nome.contains("ANTEBRACO");
             case "membros_inferiores" -> nome.contains("PERN") || nome.contains("PES")
                     || nome.contains("COXA") || nome.contains("TORNOZELO");
             default -> false;
@@ -277,12 +299,32 @@ public class AvaliacaoService {
                 || resposta.contains("PESCOCO") || resposta.contains("CERVICAL");
     }
 
-    private Short converterRespostaId(String respostaId) {
+    private Resposta buscarResposta(String respostaInformada, String codigoPergunta) {
+        Short respostaId = null;
         try {
-            return Short.valueOf(respostaId);
-        } catch (NumberFormatException | NullPointerException exception) {
-            throw new IllegalArgumentException("Identificador de resposta inválido: " + respostaId, exception);
+            respostaId = Short.valueOf(respostaInformada);
+        } catch (NumberFormatException | NullPointerException ignored) {
+            // O frontend pode enviar o texto da opção quando ainda não conhece o ID do banco.
         }
+
+        if (respostaId != null) {
+            Short idResposta = respostaId;
+            return respostaRepository.findByRespostaIdAndPergunta_Codigo(idResposta, codigoPergunta)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Resposta " + idResposta + " não encontrada para a pergunta " + codigoPergunta
+                    ));
+        }
+
+        if (respostaInformada == null || respostaInformada.isBlank()) {
+            throw new IllegalArgumentException("Resposta obrigatória para a pergunta " + codigoPergunta + ".");
+        }
+        return respostaRepository.findFirstByPergunta_CodigoAndRespostaIgnoreCase(
+                        codigoPergunta,
+                        respostaInformada
+                )
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Resposta não encontrada para a pergunta " + codigoPergunta + ": " + respostaInformada
+                ));
     }
 
     private String normalizarCodigo(String valor) {

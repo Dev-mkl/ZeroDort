@@ -5,12 +5,13 @@ import com.zeroDort.dto.AvaliacaoResponse;
 import com.zeroDort.dto.PerguntaItem;
 import com.zeroDort.model.ChaveAcesso;
 import com.zeroDort.model.Corpo;
-import com.zeroDort.model.Estudioso;
 import com.zeroDort.model.Pergunta;
 import com.zeroDort.model.PerguntaCorpo;
 import com.zeroDort.model.Resposta;
+import com.zeroDort.model.RespostaCorpo;
 import com.zeroDort.model.Usuario;
 import com.zeroDort.repository.PerguntaCorpoRepository;
+import com.zeroDort.repository.RespostaCorpoRepository;
 import com.zeroDort.repository.RespostaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,15 +29,13 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class AvaliacaoServiceTest {
 
-    @Mock
-    private EstudiosoService estudiosoService;
     @Mock
     private ChaveAcessoService chaveAcessoService;
     @Mock
@@ -47,23 +46,22 @@ class AvaliacaoServiceTest {
     private RespostaRepository respostaRepository;
     @Mock
     private PerguntaCorpoRepository perguntaCorpoRepository;
+    @Mock
+    private RespostaCorpoRepository respostaCorpoRepository;
 
     @InjectMocks
     private AvaliacaoService avaliacaoService;
 
-    private Estudioso estudioso;
     private ChaveAcesso chave;
     private Usuario usuario;
 
     @BeforeEach
     void setUp() {
-        estudioso = Estudioso.builder().id((short) 7).build();
         chave = ChaveAcesso.builder().id((short) 31).codigo("uuid-key").build();
-        usuario = Usuario.builder().id((short) 41).chaveAcesso(chave).build();
+        usuario = Usuario.builder().id((short) 41).nome("Nome de teste").chaveAcesso(chave).build();
 
-        when(estudiosoService.buscarEstudioso((short) 7)).thenReturn(estudioso);
         when(chaveAcessoService.gerarChaveAcesso()).thenReturn(chave);
-        when(usuarioService.cadastrarUsuario(any(), any(), anyDouble())).thenReturn(usuario);
+        when(usuarioService.cadastrarUsuario(any(), any(), any())).thenReturn(usuario);
         when(usuarioService.buscarPosicao(usuario)).thenReturn((short) 1);
     }
 
@@ -133,6 +131,19 @@ class AvaliacaoServiceTest {
     }
 
     @Test
+    void shouldDistributeP13PointsOnlyToTheBodyPartsSelectedByEachAnswer() {
+        Resultado resultado = avaliar(List.of(
+                resposta("P13", "Pescoço", 5, "Cervical"),
+                resposta("P13", "Punhos / Mãos (formigamento ou dormência)", 10, "Punhos")
+        ));
+
+        assertEquals(Map.of(
+                resultado.corpos().get("Cervical").getId(), 5.0,
+                resultado.corpos().get("Punhos").getId(), 10.0
+        ), capturarPontuacoes());
+    }
+
+    @Test
     void shouldApplySyn06OnlyForStandingOrAlternatingPostureAndCriticalReach() {
         Resultado resultado = avaliar(List.of(
                 resposta("P11", "Sim, preciso me curvar frequentemente ou esticar os braços acima dos ombros",
@@ -167,6 +178,7 @@ class AvaliacaoServiceTest {
     private Resultado avaliar(List<RespostaInput> respostas) {
         Map<String, Corpo> corposPorNome = new HashMap<>();
         List<PerguntaItem> itens = new ArrayList<>();
+        Map<Short, List<RespostaCorpo>> regioesPorResposta = new HashMap<>();
         short respostaId = 1;
         short perguntaId = 1;
 
@@ -182,21 +194,29 @@ class AvaliacaoServiceTest {
                     .thenReturn(Optional.of(resposta));
 
             List<PerguntaCorpo> relacoes = new ArrayList<>();
+            List<RespostaCorpo> regioesDaResposta = new ArrayList<>();
             for (String nomeCorpo : input.corpos()) {
                 Corpo corpo = corposPorNome.computeIfAbsent(nomeCorpo, nome ->
                         Corpo.builder().id((short) (corposPorNome.size() + 1)).nome(nome).build()
                 );
                 relacoes.add(PerguntaCorpo.builder().pergunta(pergunta).corpo(corpo).build());
+                regioesDaResposta.add(RespostaCorpo.builder().resposta(resposta).corpo(corpo).build());
             }
-            when(perguntaCorpoRepository.findAllByPergunta_PerguntaId(perguntaId)).thenReturn(relacoes);
+            lenient().when(perguntaCorpoRepository.findAllByPergunta_PerguntaId(perguntaId))
+                    .thenReturn(relacoes);
+            regioesPorResposta.put(respostaId, regioesDaResposta);
             itens.add(new PerguntaItem(input.codigo(), Short.toString(respostaId), null));
             respostaId++;
             perguntaId++;
         }
+        regioesPorResposta.forEach((id, regioes) ->
+                when(respostaCorpoRepository.findAllByResposta_RespostaId(id)).thenReturn(regioes)
+        );
 
         AvaliacaoResponse response = avaliacaoService.cadastrarAvaliacao(
-                new AvaliacaoRequest((short) 7, itens)
+                new AvaliacaoRequest("Nome de teste", itens)
         );
+        verify(usuarioService).cadastrarUsuario("Nome de teste", chave, response.scoreGlobal());
         return new Resultado(response, corposPorNome);
     }
 

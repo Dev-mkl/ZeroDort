@@ -7,7 +7,7 @@
   /* >>> Troque pelo link do repositório do grupo <<< */
   const CONFIG = {
     repositorio: 'https://github.com/Dev-mkl/ZeroDort',
-    apiUrl: 'http://localhost:8080' // URL do seu backend Spring Boot
+    apiUrl: 'http://localhost:8080/api' // URL base inclui o context-path configurado no backend
   };
 
   const NOMES_SEV = ['OK', 'Atenção', 'Alto', 'Crítico'];
@@ -26,7 +26,7 @@
   const app = {
     nome: '',
     idx: 0,
-    respostas: {},        // P1: índice | P9: [índices]
+    respostas: {},        // Respostas indexadas pelos códigos estáveis P1-P13
     cena: null,
     tela: 'inicio',
     resultadoBackend: null // NOVO: Guarda a resposta da API (chave, score, posicao)
@@ -35,20 +35,53 @@
   /* ================= INÍCIO ================= */
   $$('.js-repo').forEach(a => { a.href = CONFIG.repositorio; });
 
-  $('#form-nome').addEventListener('submit', (ev) => {
+  $('#form-nome').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const nome = $('#campo-nome').value.trim();
     if (!nome) { $('#erro-nome').hidden = false; $('#campo-nome').focus(); return; }
-    $('#erro-nome').hidden = true;
-    app.nome = nome;
-    app.idx = 0;
-    app.respostas = {};
-    app.resultadoBackend = null;
-    $('.lat-btn[data-ir="resultado"]').disabled = true;
-    $('#nome-usuario').textContent = nome;
-    $('#ini-usuario').textContent = nome.charAt(0).toUpperCase();
-    mostrarApp();
-    irPara('quiz');
+    const form = ev.currentTarget;
+    const botao = form.querySelector('button[type="submit"]');
+    const textoOriginal = botao.innerHTML;
+    const erro = $('#erro-nome');
+    erro.hidden = true;
+    botao.disabled = true;
+    botao.textContent = 'Verificando nome...';
+
+    try {
+      const response = await fetch(
+        `${CONFIG.apiUrl}/usuarios/disponibilidade?${new URLSearchParams({ nome })}`
+      );
+      if (!response.ok) {
+        const detalhe = await response.text();
+        throw new Error(detalhe || 'Não foi possível verificar o nome.');
+      }
+
+      const { disponivel } = await response.json();
+      if (!disponivel) {
+        erro.textContent = 'Este nome já está em uso. Escolha outro nome para continuar.';
+        erro.hidden = false;
+        $('#campo-nome').focus();
+        return;
+      }
+
+      erro.textContent = 'Digite seu nome para continuar.';
+      app.nome = nome;
+      app.idx = 0;
+      app.respostas = {};
+      app.resultadoBackend = null;
+      $('.lat-btn[data-ir="resultado"]').disabled = true;
+      $('#nome-usuario').textContent = nome;
+      $('#ini-usuario').textContent = nome.charAt(0).toUpperCase();
+      mostrarApp();
+      irPara('quiz');
+    } catch (error) {
+      console.error('Erro ao verificar disponibilidade do nome:', error);
+      erro.textContent = 'Não foi possível verificar o nome. Confira a conexão e tente novamente.';
+      erro.hidden = false;
+    } finally {
+      botao.disabled = false;
+      botao.innerHTML = textoOriginal;
+    }
   });
 
   function mostrarTela(id) {
@@ -90,7 +123,9 @@
 
   $$('.lat-btn[data-ir]').forEach(b => b.addEventListener('click', () => irPara(b.dataset.ir)));
 
-  function completo() { return QUESTOES.every(q => respondida(q)); }
+  function questoesDoFluxo() { return perguntasAtivas(app.respostas); }
+  function perguntaAtual() { return questoesDoFluxo()[app.idx]; }
+  function completo() { return questoesDoFluxo().every(respondida); }
   function respondida(q) {
     const r = app.respostas[q.id];
     return q.multipla ? Array.isArray(r) && r.length > 0 : r !== undefined;
@@ -98,10 +133,13 @@
 
   /* ================= PERGUNTA ================= */
   function renderPergunta() {
-    const q = QUESTOES[app.idx];
+    const fluxo = questoesDoFluxo();
+    app.idx = Math.max(0, Math.min(app.idx, fluxo.length - 1));
+    const q = fluxo[app.idx];
+    if (!q) return;
     $('#p-num').textContent = q.id;
     $('#p-bloco').textContent = 'Bloco ' + q.bloco + ' · ' + BLOCOS[q.bloco];
-    $('#p-contador').textContent = (app.idx + 1) + ' de ' + QUESTOES.length;
+    $('#p-contador').textContent = (app.idx + 1) + ' de ' + fluxo.length;
     $('#p-texto').textContent = q.texto;
     $('#p-multi').hidden = !q.multipla;
     $('#hud-bloco').textContent = 'Bloco ' + q.bloco + ' · ' + BLOCOS[q.bloco];
@@ -127,7 +165,8 @@
   }
 
   function marcarSelecionadas() {
-    const q = QUESTOES[app.idx];
+    const q = perguntaAtual();
+    if (!q) return;
     const r = app.respostas[q.id];
     $$('#opcoes .opcao').forEach((b, i) => {
       const sel = q.multipla ? (r || []).includes(i) : r === i;
@@ -137,15 +176,18 @@
   }
 
   function atualizarBotaoProxima() {
-    const q = QUESTOES[app.idx];
-    const ultima = app.idx === QUESTOES.length - 1;
+    const fluxo = questoesDoFluxo();
+    const q = fluxo[app.idx];
+    if (!q) return;
+    const ultima = app.idx === fluxo.length - 1;
     const btn = $('#btn-proxima');
     btn.disabled = !respondida(q);
     btn.innerHTML = (ultima ? 'Ver resultado' : 'Próxima') + ' <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
   }
 
   function selecionar(i) {
-    const q = QUESTOES[app.idx];
+    const q = perguntaAtual();
+    if (!q) return;
     if (q.multipla) {
       let r = (app.respostas[q.id] || []).slice();
       const o = q.opcoes[i];
@@ -155,11 +197,13 @@
         r = r.includes(i) ? r.filter(k => k !== i) : r.concat(i);
       }
       app.respostas[q.id] = r;
-    } else {
-      app.respostas[q.id] = i;
-      // P8 "pausas frequentes": o avatar faz um alongamento rápido
-      if (q.opcoes[i].pose.pausas === 'frequente' && app.cena) app.cena.gestoRapido('alongar', 2.8);
-    }
+    } else app.respostas[q.id] = i;
+    const idsAtivos = new Set(questoesDoFluxo().map(pergunta => pergunta.id));
+    Object.keys(app.respostas).forEach(id => {
+      if (!idsAtivos.has(id)) delete app.respostas[id];
+    });
+    const novoIndice = questoesDoFluxo().findIndex(pergunta => pergunta.id === q.id);
+    app.idx = Math.max(0, novoIndice);
     marcarSelecionadas();
     atualizarBotaoProxima();
     atualizarTudo();
@@ -168,7 +212,8 @@
   }
 
   function mostrarEfeito(iClicado) {
-    const q = QUESTOES[app.idx];
+    const q = perguntaAtual();
+    if (!q) return;
     const r = app.respostas[q.id];
     const el = $('#vp-efeito');
     let o = null;
@@ -188,8 +233,9 @@
   function renderProgresso() {
     const box = $('#progresso');
     box.innerHTML = '';
-    QUESTOES.forEach((q, i) => {
-      if (i > 0 && QUESTOES[i - 1].bloco !== q.bloco) {
+    const fluxo = questoesDoFluxo();
+    fluxo.forEach((q, i) => {
+      if (i > 0 && fluxo[i - 1].bloco !== q.bloco) {
         const s = document.createElement('span'); s.className = 'sep'; box.appendChild(s);
       }
       const b = document.createElement('button');
@@ -199,8 +245,7 @@
       if (respondida(q)) b.classList.add('feito');
       if (i === app.idx) b.classList.add('atual');
       // só permite pular para perguntas já liberadas
-      const liberada = i <= app.idx || QUESTOES.slice(0, i).every(respondida);
-      b.disabled = !liberada;
+      b.disabled = i > app.idx;
       b.addEventListener('click', () => { app.idx = i; renderPergunta(); });
       box.appendChild(b);
     });
@@ -216,10 +261,12 @@
   // INTEGRAÇÃO COM O BACKEND (MODIFICADO AQUI)
   // ==========================================
   async function avancar() {
-    const q = QUESTOES[app.idx];
+    const fluxo = questoesDoFluxo();
+    const q = fluxo[app.idx];
+    if (!q) return;
     if (!respondida(q)) return;
     
-    if (app.idx < QUESTOES.length - 1) { 
+    if (app.idx < fluxo.length - 1) {
       app.idx++; 
       renderPergunta(); 
     } else {
@@ -229,49 +276,37 @@
       btn.innerHTML = 'Salvando...';
       btn.disabled = true;
 
-      // 1. Monta a lista de perguntas no formato que o DTO Java espera
       const perguntasPayload = [];
-      
-      QUESTOES.forEach(perguntaObj => {
-          const resposta = app.respostas[perguntaObj.id];
-          if (resposta !== undefined) {
-              if (perguntaObj.multipla) {
-                  resposta.forEach(idxOpcao => {
-                      const opc = perguntaObj.opcoes[idxOpcao];
-                      perguntasPayload.push({
-                          pergunta: perguntaObj.id,
-                          regiao: Object.keys(opc.regioes)[0] || "geral", // Pega a primeira região (ex: "lombar")
-                          pontuacao: opc.pts
-                      });
-                  });
-              } else {
-                  const opc = perguntaObj.opcoes[resposta];
-                  perguntasPayload.push({
-                      pergunta: perguntaObj.id,
-                      regiao: Object.keys(opc.regioes)[0] || "geral",
-                      pontuacao: opc.pts
-                  });
-              }
-          }
+      fluxo.forEach(pergunta => {
+        const resposta = app.respostas[pergunta.id];
+        const indices = pergunta.multipla ? resposta : [resposta];
+        indices.forEach(indice => {
+          const opcao = pergunta.opcoes[indice];
+          perguntasPayload.push({
+            CodigoPergunta: pergunta.id,
+            RespostaId: opcao.texto,
+            regiao: Object.keys(opcao.regioes)
+          });
+        });
       });
 
-      // 2. Monta o objeto igual ao seu AvaliacaoRequest.java
       const payload = {
-          estudiosoId: 1, // ID fixo criado no DataInitializer.java
-          perguntas: perguntasPayload
+        nome: app.nome,
+        perguntas: perguntasPayload
       };
 
       try {
-          // 3. Faz a requisição HTTP para o backend
           const response = await fetch(`${CONFIG.apiUrl}/avaliacao`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)
           });
 
-          if (!response.ok) throw new Error('Falha ao salvar no servidor');
+          if (!response.ok) {
+            const erro = await response.text();
+            throw new Error(erro || 'Falha ao salvar no servidor');
+          }
 
-          // Recebe { chave, score, posicao }
           const data = await response.json(); 
           app.resultadoBackend = data;
 
@@ -280,7 +315,7 @@
 
       } catch (error) {
           console.error("Erro na integração:", error);
-          alert('Erro: Não foi possível salvar a avaliação. Verifique se o backend Spring Boot está rodando na porta 8080.');
+          alert('Erro ao salvar a avaliação: ' + error.message);
       } finally {
           // Restaura o botão
           btn.innerHTML = htmlOriginal;
@@ -292,7 +327,8 @@
   document.addEventListener('keydown', (ev) => {
     if (app.tela !== 'quiz' || !$('#tela-app').classList.contains('ativa')) return;
     if (ev.target.tagName === 'INPUT') return;
-    const q = QUESTOES[app.idx];
+    const q = perguntaAtual();
+    if (!q) return;
     const n = parseInt(ev.key, 10);
     if (n >= 1 && n <= q.opcoes.length) selecionar(n - 1);
     else if (ev.key === 'Enter' && !$('#btn-proxima').disabled && ev.target.tagName !== 'BUTTON') avancar();
@@ -307,40 +343,118 @@
     return q.multipla ? r.map(i => q.opcoes[i]) : [q.opcoes[r]];
   }
 
-  function calcular(ateIndice = QUESTOES.length - 1) {
-    let pts = 0;
+  function calcular(ateIndice) {
+    const fluxo = questoesDoFluxo();
+    const perguntasConsideradas = fluxo.slice(0, (ateIndice ?? fluxo.length - 1) + 1);
+    let pontosBase = 0;
     const sev = {};
     const dor = [];
-    let alerta = false;
     const pose = {};
-    QUESTOES.forEach((q, i) => {
-      if (i > ateIndice) return;
-      opcoesEscolhidas(q).forEach(o => {
-        pts += o.pts;
+    const codigos = {};
+    const pontosPorPergunta = {};
+    let alerta = false;
+
+    perguntasConsideradas.forEach(q => {
+      const opcoes = opcoesEscolhidas(q);
+      if (opcoes.length) {
+        codigos[q.id] = opcoes.map(opcao => opcao.codigo);
+        pontosPorPergunta[q.id] = opcoes.reduce((total, opcao) => total + opcao.pts, 0);
+      }
+      opcoes.forEach(o => {
+        pontosBase += o.pts;
         Object.entries(o.regioes).forEach(([reg, v]) => { sev[reg] = Math.max(sev[reg] ?? -1, v); });
         Object.assign(pose, o.pose);
         if (o.dor) dor.push(o.dor);
         if (o.alerta) alerta = true;
       });
     });
-    const nota = Math.min(10, pts / PONTOS_MAXIMOS * 10);
-    let faixa = FAIXAS.find(f => nota < f.ate) || FAIXAS[FAIXAS.length - 1];
-    if (alerta && FAIXAS.indexOf(faixa) < 2) faixa = FAIXAS[2]; // formigamento => no mínimo "ALTO"
-    return { pts, nota, faixa, sev, dor, alerta, pose };
+
+    const tem = (pergunta, codigo) => (codigos[pergunta] || []).includes(codigo);
+    const sinergias = [];
+    if (tem('P6', 'NOTEBOOK_DIRETO') && tem('P7', 'TELA_MUITO_ABAIXO')) {
+      sinergias.push('SYN-01');
+      sev.cervical = 3;
+      sev.ombros = 3;
+      pose.flexaoForcada = true;
+      pose.tela = 'baixa';
+    }
+    if ((tem('P2', 'CADEIRA_FIXA') || tem('P2', 'SEM_AJUSTE_LOMBAR')) && tem('P3', 'PES_SUSPENSOS')) {
+      sinergias.push('SYN-02');
+      sev.lombar = 3;
+      sev.pes = 2;
+      pose.cadeira = 'semLombar';
+      pose.pes = 'suspensos';
+    }
+    if (tem('P8', 'TELEFONE_NO_OMBRO') && tem('P9', 'PUNHOS_FORCADOS')) {
+      sinergias.push('SYN-03');
+      sev.ombros = 3;
+      sev.punhos = 3;
+      pose.fone = 'ombro';
+      pose.bracos = 'esticados';
+    }
+    const postura = codigos.P1 || [];
+    const sentado = postura.includes('SENTADO');
+    const emPeOuAlternando = postura.includes('EM_PE_FIXO') || postura.includes('ALTERNANDO');
+    if (sentado && tem('P12', 'SEM_PAUSAS')) {
+      sinergias.push('SYN-04');
+      pose.auraGlobal = true;
+      pose.pausas = 'nunca';
+      Object.keys(REGIOES).forEach(regiao => { sev[regiao] = Math.max(sev[regiao] ?? -1, 2); });
+    }
+    const sintomasCriticos = (codigos.P13 || []).some(codigo =>
+      codigo === 'SINTOMA_CERVICAL' || codigo === 'SINTOMA_PUNHOS'
+    );
+    const pontosEquipamento = Object.entries(pontosPorPergunta)
+      .filter(([pergunta]) => /^P([2-9]|10|11)$/.test(pergunta))
+      .reduce((total, [, pontos]) => total + pontos, 0);
+    const alertaCritico = sintomasCriticos && pontosEquipamento > 25;
+    if (alertaCritico) sinergias.push('SYN-05');
+
+    if (emPeOuAlternando && tem('P11', 'ALCANCE_EM_PE_CRITICO')) {
+      sinergias.push('SYN-06');
+      sev.ombros = 3;
+      sev.lombar = 3;
+      pose.postura = 'emPe';
+      pose.alcance = 'critico';
+    }
+
+    const bonusSinergia = sinergias.reduce((total, codigo) => total + ({
+      'SYN-01': 10, 'SYN-02': 8, 'SYN-03': 12, 'SYN-06': 10
+    }[codigo] || 0), 0);
+    const multiplicadorGlobal = sinergias.includes('SYN-04') ? 1.15 : 1;
+    let nota = Math.floor(Math.min(100, (pontosBase + bonusSinergia) * multiplicadorGlobal));
+    if (alertaCritico) nota = Math.max(81, nota);
+
+    const faixa = RISCO_FAIXAS.find(item => nota <= item.ate) || RISCO_FAIXAS[4];
+    return {
+      pts: pontosBase,
+      pontosBase,
+      bonusSinergia,
+      nota,
+      faixa,
+      sev,
+      dor,
+      alerta,
+      alertaCritico,
+      pose,
+      sinergias,
+      algumaResposta: Object.keys(app.respostas).length > 0,
+    };
   }
 
   /* ================= ATUALIZAÇÃO VISUAL ================= */
   function atualizarTudo() {
     const r = calcular();
-    const algumaResposta = Object.keys(app.respostas).length > 0;
+    const algumaResposta = r.algumaResposta;
 
     // termômetro
     $('#nota-valor').textContent = algumaResposta ? r.nota.toFixed(1) : '—';
     $('#nota-valor').style.color = algumaResposta ? r.faixa.cor : '';
     $('#nota-faixa').textContent = algumaResposta ? r.faixa.nome : 'sem respostas';
     $('#nota-faixa').style.color = algumaResposta ? r.faixa.cor : '';
-    $('#nota-marcador').style.left = (r.nota * 10) + '%';
-    $('#nota-pontos').textContent = r.pts + ' de ' + PONTOS_MAXIMOS + ' pts';
+    $('#nota-marcador').style.left = r.nota + '%';
+    $('#nota-pontos').textContent = r.nota + ' de 100 pts' +
+      (r.bonusSinergia ? ` (inclui +${r.bonusSinergia} de sinergia)` : '');
 
     // regiões
     const ul = $('#lista-regioes');
@@ -365,7 +479,7 @@
     // cena 3D
     if (app.cena) {
       app.cena.aplicarEstado(r.pose);
-      app.cena.definirSeveridade(r.sev, r.dor);
+      app.cena.definirSeveridade(r.sev, r.dor, r.pose.auraGlobal);
       app.cena.definirRotulos(montarRotulos(r));
     }
   }
@@ -429,21 +543,23 @@
     g.clearRect(0, 0, w, h);
     const pad = { l: 26, r: 8, t: 8, b: 20 };
     const iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
-    const X = (i) => pad.l + (iw * i) / (QUESTOES.length - 1);
-    const Y = (v) => pad.t + ih - (ih * v) / 10;
+    const fluxo = questoesDoFluxo();
+    const X = (i) => pad.l + (iw * i) / Math.max(1, fluxo.length - 1);
+    const Y = (v) => pad.t + ih - (ih * v) / 100;
 
     // faixas de risco
-    const faixas = [[0, 2, '34,197,94'], [2, 4, '234,179,8'], [4, 6, '249,115,22'], [6, 10, '239,68,68']];
+    const faixas = [[0, 20, '34,197,94'], [20, 40, '234,179,8'], [40, 60, '249,115,22'],
+      [60, 80, '239,68,68'], [80, 100, '127,29,29']];
     faixas.forEach(([a, b, c]) => { g.fillStyle = `rgba(${c},0.07)`; g.fillRect(pad.l, Y(b), iw, Y(a) - Y(b)); });
     g.font = '10px Inter, sans-serif'; g.fillStyle = '#64748b'; g.textAlign = 'right';
-    [0, 2, 4, 6, 10].forEach(v => g.fillText(v, pad.l - 6, Y(v) + 3));
+    [0, 20, 40, 60, 80, 100].forEach(v => g.fillText(v, pad.l - 6, Y(v) + 3));
     g.textAlign = 'center';
-    QUESTOES.forEach((q, i) => g.fillText(q.id, X(i), h - 5));
+    fluxo.forEach((q, i) => g.fillText(q.id, X(i), h - 5));
 
     // série: nota acumulada após cada pergunta respondida
     const pts = [];
-    for (let i = 0; i < QUESTOES.length; i++) {
-      if (!respondida(QUESTOES[i])) break;
+    for (let i = 0; i < fluxo.length; i++) {
+      if (!respondida(fluxo[i])) break;
       pts.push({ x: X(i), y: Y(calcular(i).nota), v: calcular(i).nota });
     }
     if (!pts.length) {
@@ -451,7 +567,7 @@
       g.fillText('Responda para ver a evolução', pad.l + iw / 2, pad.t + ih / 2);
       return;
     }
-    const grad = g.createLinearGradient(0, Y(10), 0, Y(0));
+    const grad = g.createLinearGradient(0, Y(100), 0, Y(0));
     grad.addColorStop(0, '#ef4444'); grad.addColorStop(0.45, '#f97316'); grad.addColorStop(0.7, '#eab308'); grad.addColorStop(1, '#22c55e');
     // área
     g.beginPath(); g.moveTo(pts[0].x, Y(0));
@@ -471,20 +587,29 @@
   /* ================= RESULTADO ================= */
   function renderResultado() {
     const r = calcular();
-    $('#res-titulo').textContent = `${app.nome}, seu risco ergonômico é ${r.faixa.nome}`;
-    $('#res-texto').textContent = r.faixa.texto;
+    const scoreFinal = Number.isFinite(Number(app.resultadoBackend?.scoreGlobal))
+      ? Number(app.resultadoBackend.scoreGlobal)
+      : r.nota;
+    const faixaFinal = RISCO_FAIXAS.find(item => scoreFinal <= item.ate) || RISCO_FAIXAS[4];
+    $('#res-titulo').textContent = `${app.nome}, seu risco ergonômico é ${faixaFinal.nome}`;
+    $('#res-texto').textContent = faixaFinal.texto;
     const nota = $('#res-nota');
-    nota.querySelector('b').textContent = r.nota.toFixed(1);
-    nota.style.borderColor = r.faixa.cor;
-    nota.querySelector('b').style.color = r.faixa.cor;
-    $('#res-alerta').hidden = !r.alerta;
+    nota.querySelector('b').textContent = scoreFinal.toFixed(0);
+    nota.querySelector('span').textContent = 'de 100';
+    nota.style.borderColor = faixaFinal.cor;
+    nota.querySelector('b').style.color = faixaFinal.cor;
+    const alerta = $('#res-alerta');
+    alerta.hidden = !r.alerta && !r.alertaCritico;
+    alerta.querySelector('div').textContent = r.alertaCritico
+      ? 'ALERTA CRÍTICO DE SAÚDE OCUPACIONAL. Sintomas em punhos ou cervical combinados com risco de equipamento acima de 25 pontos. Procure avaliação ocupacional.'
+      : 'Você relatou sintomas persistentes. Se continuarem, procure avaliação de um profissional de saúde.';
 
     // NOVO: Exibe os dados vindos do backend (Chave e Posição)
     if (app.resultadoBackend) {
         const alertaChave = $('#res-alerta-chave');
         if(alertaChave) {
             alertaChave.hidden = false;
-            $('#res-chave').textContent = app.resultadoBackend.chave;
+            $('#res-chave').textContent = app.resultadoBackend.chaveDeAcesso;
             $('#res-posicao').textContent = app.resultadoBackend.posicao + 'º';
         }
     }
@@ -493,8 +618,11 @@
     const blocos = $('#res-blocos');
     blocos.innerHTML = '';
     Object.entries(BLOCOS).forEach(([n, nome]) => {
-      const qs = QUESTOES.filter(q => q.bloco === +n);
-      const max = qs.reduce((s, q) => s + (q.multipla ? q.opcoes.reduce((a, o) => a + o.pts, 0) : Math.max(...q.opcoes.map(o => o.pts))), 0);
+      const qs = questoesDoFluxo().filter(q => q.bloco === +n);
+      if (!qs.length) return;
+      const max = qs.reduce((s, q) => s + (q.multipla
+        ? q.opcoes.filter(o => !o.exclusiva).reduce((a, o) => a + o.pts, 0)
+        : Math.max(...q.opcoes.map(o => o.pts))), 0);
       const pts = qs.reduce((s, q) => s + opcoesEscolhidas(q).reduce((a, o) => a + o.pts, 0), 0);
       const pct = max ? pts / max : 0;
       const cor = pct < 0.2 ? CORES_SEV[0] : pct < 0.4 ? CORES_SEV[1] : pct < 0.65 ? CORES_SEV[2] : CORES_SEV[3];
@@ -508,7 +636,7 @@
 
     // recomendações ordenadas pelo peso
     const recs = [];
-    QUESTOES.forEach(q => opcoesEscolhidas(q).forEach(o => {
+    questoesDoFluxo().forEach(q => opcoesEscolhidas(q).forEach(o => {
       if (o.dica) recs.push({ q, o, sev: Math.max(0, ...Object.values(o.regioes)) });
     }));
     recs.sort((a, b) => b.o.pts - a.o.pts);
@@ -538,7 +666,43 @@
     atualizarTudo();
     irPara('quiz');
   });
-  $('#btn-imprimir').addEventListener('click', () => window.print());
+  $('#btn-imprimir').addEventListener('click', async (ev) => {
+    const chave = app.resultadoBackend?.chaveDeAcesso;
+    if (!chave) {
+      alert('A chave da avaliação não está disponível para gerar o relatório.');
+      return;
+    }
+
+    const botao = ev.currentTarget;
+    const textoOriginal = botao.textContent;
+    botao.disabled = true;
+    botao.textContent = 'Gerando PDF...';
+    try {
+      const response = await fetch(
+        `${CONFIG.apiUrl}/relatorios/${encodeURIComponent(chave)}/pdf`
+      );
+      if (!response.ok) {
+        const erro = await response.text();
+        throw new Error(erro || 'Não foi possível gerar o relatório.');
+      }
+
+      const pdf = await response.blob();
+      const url = URL.createObjectURL(pdf);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'relatorio-ergonomico.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      alert('Erro ao gerar o relatório: ' + error.message);
+    } finally {
+      botao.disabled = false;
+      botao.textContent = textoOriginal;
+    }
+  });
   $('#btn-inicio').addEventListener('click', () => irPara('inicio'));
 
   /* ================= CÂMERA ================= */
@@ -582,7 +746,7 @@
     $('#rotulos').style.display = '';
     $('#btn-pausa').innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg> Iniciar pausa';
     $('.lat-btn[data-ir="pausa"]').classList.remove('ativo');
-    if (app.cena) app.cena.focar(app.tela === 'quiz' ? QUESTOES[app.idx].foco : 'geral');
+    if (app.cena) app.cena.focar(app.tela === 'quiz' ? perguntaAtual()?.foco || 'geral' : 'geral');
   }
   $('#btn-pausa').addEventListener('click', iniciarPausa);
   $('#btn-parar-pausa').addEventListener('click', pararPausa);

@@ -24,8 +24,8 @@
     kbZ: 0.39, monY: 1.17, nbY: 0,
   };
 
-  const ESTADO_INICIAL = { cadeira: 'padrao', pes: 'neutro', mesa: 'arredondada', equip: 'monitor', tela: 'padrao',
-    fone: 'nenhum', bracos: 'neutro', pausas: 'padrao' };
+  const ESTADO_INICIAL = { postura: 'sentado', cadeira: 'padrao', pes: 'neutro', mesa: 'arredondada',
+    equip: 'monitor', tela: 'padrao', fone: 'nenhum', movel: 'nenhum', bracos: 'neutro', pausas: 'padrao' };
 
   /* Câmera: alvo e posição (coordenadas do mundo) para cada foco */
   const FOCOS = {
@@ -287,6 +287,23 @@
       mouse.scale.set(0.8, 0.45, 1.2); mouse.position.set(-0.33, MESA_Y + 0.012, 0); tk.add(mouse);
       this.palco.add(tk);
 
+      /* dispositivo móvel */
+      const celular = this.dispositivoMovel = new THREE.Group();
+      celular.position.set(-0.12, MESA_Y + 0.022, 0.48);
+      const corpoCelular = new THREE.Mesh(
+        new THREE.BoxGeometry(0.09, 0.014, 0.16),
+        new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.35, metalness: 0.25 })
+      );
+      celular.add(corpoCelular);
+      const telaCelular = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.075, 0.14),
+        new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+      );
+      telaCelular.rotation.x = -Math.PI / 2;
+      telaCelular.position.y = 0.008;
+      celular.add(telaCelular);
+      this.palco.add(celular);
+
       /* papéis (quando não usa computador) */
       const pp = this.papeis = new THREE.Group();
       const branco = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.9 });
@@ -444,11 +461,12 @@
     aplicarEstado(e) {
       this.estado = { ...ESTADO_INICIAL, ...e };
       const s = this.estado;
-      this.cadeiraEscritorio.visible = s.cadeira !== 'fixa';
-      this.cadeiraFixa.visible = s.cadeira === 'fixa';
-      this.apoioLombar.visible = s.cadeira === 'ergonomica';
-      this.alavanca.visible = s.cadeira === 'ergonomica' || s.cadeira === 'semLombar';
-      this.apoioPes.visible = s.pes === 'apoio';
+      const emPe = s.postura === 'emPe';
+      this.cadeiraEscritorio.visible = !emPe && s.cadeira !== 'fixa';
+      this.cadeiraFixa.visible = !emPe && s.cadeira === 'fixa';
+      this.apoioLombar.visible = !emPe && s.cadeira === 'ergonomica';
+      this.alavanca.visible = !emPe && (s.cadeira === 'ergonomica' || s.cadeira === 'semLombar');
+      this.apoioPes.visible = !emPe && s.pes === 'apoio';
       this.bordaRedonda.visible = s.mesa !== 'quina';
       this.quina.visible = s.mesa === 'quina';
       const temNotebook = s.equip === 'notebook';
@@ -457,6 +475,7 @@
       this.papeis.visible = s.equip === 'nenhum';
       // teclado externo: monitor, ou notebook elevado (tela na altura dos olhos)
       this.teclado.visible = s.equip === 'monitor' || (temNotebook && s.tela === 'olhos');
+      this.dispositivoMovel.visible = s.movel === 'usoFrequente';
       this.headset.visible = s.fone === 'headset';
       this.telefone.visible = s.fone === 'ombro';
       this.alvo = this._calcularPose(s);
@@ -464,10 +483,20 @@
 
     _calcularPose(s) {
       const t = { ...POSE_BASE };
+      if (s.postura === 'emPe') {
+        t.chairH = 0.88;
+        t.pelvisZ = 0;
+        t.spineLow = 0.02;
+        t.chest = 0.02;
+        t.uArmLX = -0.08;
+        t.uArmRX = -0.08;
+        t.fArmLX = -0.1;
+        t.fArmRX = -0.1;
+      }
       // cadeira / coluna
-      if (s.cadeira === 'ergonomica') { t.spineLow = 0.0; t.chest = 0.02; t.chairH = 0.47; }
-      if (s.cadeira === 'semLombar') { t.spineLow = -0.12; t.chest = 0.2; t.pelvisZ = 0.03; t.neck += 0.05; }
-      if (s.cadeira === 'fixa') { t.spineLow = -0.32; t.chest = 0.34; t.pelvisZ = 0.08; t.neck += 0.1; t.chairH = 0.46; }
+      if (s.postura !== 'emPe' && s.cadeira === 'ergonomica') { t.spineLow = 0.0; t.chest = 0.02; t.chairH = 0.47; }
+      if (s.postura !== 'emPe' && s.cadeira === 'semLombar') { t.spineLow = -0.12; t.chest = 0.2; t.pelvisZ = 0.03; t.neck += 0.05; }
+      if (s.postura !== 'emPe' && s.cadeira === 'fixa') { t.spineLow = -0.32; t.chest = 0.34; t.pelvisZ = 0.08; t.neck += 0.1; t.chairH = 0.46; }
       // pausas / fadiga
       if (s.pausas === 'medio') { t.chest += 0.05; }
       if (s.pausas === 'nunca') { t.chest += 0.16; t.neck += 0.1; t.shZ = 0.035; }
@@ -477,6 +506,13 @@
       let pernas = 'ik', piso = 0;
       if (s.pes === 'apoio') { t.chairH = Math.max(t.chairH, 0.52); piso = 0.105; }
       if (s.pes === 'suspensos') { t.chairH = 0.62; pernas = 'livre'; t.swing = 1; }
+      if (s.postura === 'emPe') {
+        t.chairH = 0.88;
+        t.pelvisZ = 0;
+        pernas = 'ik';
+        piso = 0;
+        t.swing = 0;
+      }
       // braços / teclado
       let punho = -0.05;
       if (s.bracos === 'esticados') { t.kbZ = 0.62; punho = 0.5; t.shZ += 0.03; t.chest += 0.06; }
@@ -487,21 +523,42 @@
         if (s.tela !== 'olhos') { flexao = 0.62; maoZ = s.bracos === 'esticados' ? 0.5 : 0.45; maoY = MESA_Y + 0.05; }
       }
       if (s.equip === 'nenhum') { maoZ = 0.42; maoY = MESA_Y + 0.05; }
+      if (s.movel === 'usoFrequente') {
+        flexao = Math.max(flexao, 0.38);
+        maoZ = 0.48;
+        maoY = MESA_Y + 0.06;
+      }
       if (s.equip === 'monitor') t.monY = s.tela === 'baixa' ? 0.94 : 1.17;
       if (s.tela === 'baixa') flexao = Math.max(flexao, 0.5);
+      if (s.flexaoForcada) flexao = Math.max(flexao, Math.PI / 4);
       if (s.equip === 'nenhum') flexao = Math.max(flexao, 0.25);
       t.neck += flexao * 0.55; t.head += flexao * 0.45;
       // telefone no ombro
       if (s.fone === 'ombro') { t.headTilt = -0.36; t.shLY = 0.06; t.head += 0.05; }
 
       // braços: IK simples (2 segmentos) para as mãos chegarem ao teclado
+      if (s.alcance === 'critico') {
+        t.spineLow -= 0.12;
+        t.chest += 0.24;
+        maoY = t.chairH + 0.07 + 0.06 + 0.22 + 0.27 - 0.02;
+        maoZ = t.pelvisZ + 0.42;
+      }
       const ik = this._bracoIK(t, maoZ, maoY, punho);
       t.uArmLX = t.uArmRX = ik.uX;
       t.fArmLX = t.fArmRX = ik.fX;
       t.handLX = t.handRX = ik.hX;
+      if (s.alcance === 'critico') {
+        t.uArmLZ = 0.18;
+        t.uArmRZ = -0.18;
+      }
 
       // pernas: IK simples (2 segmentos) para apoiar o pé no chão/apoio
-      if (pernas === 'ik') {
+      if (s.postura === 'emPe') {
+        t.thighX = 0.02;
+        t.shinX = -0.02;
+        t.footX = 0;
+        t.swing = 0;
+      } else if (pernas === 'ik') {
         const quadrilY = t.chairH + 0.07 - 0.03;
         const dy = (piso + 0.075) - quadrilY;
         const dz = (s.mesa === 'quina' ? 0.34 : 0.47) - (t.pelvisZ);
@@ -543,7 +600,7 @@
     }
 
     /** sev: { regiao: 0..3 } ; dor: lista de regiões com dor relatada */
-    definirSeveridade(sev, dor) {
+    definirSeveridade(sev, dor, auraGlobal = false) {
       this.severidade = { ...sev };
       this.dor = new Set(dor || []);
       Object.entries(this.hotspots).forEach(([reg, sprites]) => {
@@ -556,7 +613,7 @@
       // a casca do corpo esquenta conforme o pior risco
       const pior = Math.max(-1, ...Object.values(sev).filter(v => v !== null && v !== undefined));
       const cores = [0x60a5fa, 0x60a5fa, 0x7aa8f0, 0x8ea2e6];
-      this.matCasca.uniforms.cor.value.setHex(cores[Math.max(0, pior)]);
+      this.matCasca.uniforms.cor.value.setHex(auraGlobal ? 0xf97316 : cores[Math.max(0, pior)]);
     }
 
     /** Rótulos com linha guia: [{regiao, titulo, linha, sev}] */
@@ -632,7 +689,7 @@
       const t = this.relogio.getElapsedTime();
 
       // suaviza a pose rumo ao alvo
-      const k = 1 - Math.exp(-dt * 4.5);
+      const k = 1 - Math.exp(-dt * 10);
       for (const key in this.alvo) this.p[key] = lerp(this.p[key], this.alvo[key], k);
       const q = { ...this.p };
 
