@@ -24,7 +24,7 @@
     kbZ: 0.39, monY: 1.17, nbY: 0,
   };
 
-  const ESTADO_INICIAL = { cadeira: 'padrao', pes: 'neutro', mesa: 'arredondada', equip: 'monitor', tela: 'olhos',
+  const ESTADO_INICIAL = { cadeira: 'padrao', pes: 'neutro', mesa: 'arredondada', equip: 'monitor', tela: 'padrao',
     fone: 'nenhum', bracos: 'neutro', pausas: 'padrao' };
 
   /* Câmera: alvo e posição (coordenadas do mundo) para cada foco */
@@ -312,8 +312,16 @@
       const cil = (r, h) => new THREE.CylinderGeometry(r, r, h, 10);
       const cap = (r, h) => new THREE.CapsuleGeometry(r, h, 6, 16);
       const esf = (r) => new THREE.SphereGeometry(r, 20, 14);
-      const vertebras = (pai, y0, y1, z, r) => {
-        for (let y = y0; y <= y1 + 1e-6; y += 0.034) add(pai, cil(r, 0.022), ossoMat, [0, y, z]);
+      /* Coluna: as três partes (lombar, torácica, cervical) seguem a MESMA linha de profundidade,
+         com as curvaturas naturais. curvaZ(y) devolve a profundidade (z) da vértebra na altura y. */
+      const LINHA_COLUNA = -0.055;
+      const vertebras = (pai, y0, y1, n, r, curvaZ) => {
+        for (let i = 0; i < n; i++) {
+          const y = y0 + (y1 - y0) * (i / (n - 1));
+          const z = curvaZ(y);
+          add(pai, cil(r, r * 1.05), ossoMat, [0, y, z]);                                  // corpo vertebral
+          add(pai, new THREE.BoxGeometry(r * 0.55, r * 0.7, r * 1.4), ossoMat, [0, y - r * 0.15, z - r * 1.5], null, [0.35, 0, 0]); // processo espinhoso
+        }
       };
 
       const R = this.rig = {};
@@ -324,22 +332,30 @@
 
       const lombar = R.lombar = new THREE.Group(); lombar.position.set(0, 0.06, -0.02); quadril.add(lombar);
       add(lombar, cap(0.13, 0.1), casca, [0, 0.11, 0.0], [1.12, 1, 0.78]);
-      vertebras(lombar, 0.0, 0.2, -0.05, 0.022);
+      // lordose lombar: leve curva para a frente
+      const zLombar = (y) => LINHA_COLUNA + 0.014 * Math.sin(Math.PI * y / 0.22);
+      vertebras(lombar, 0.012, 0.208, 6, 0.022, zLombar);
 
       const torax = R.torax = new THREE.Group(); torax.position.set(0, 0.22, 0); lombar.add(torax);
       add(torax, cap(0.15, 0.16), casca, [0, 0.17, 0.0], [1.18, 1, 0.76]);
-      vertebras(torax, 0.0, 0.3, -0.07, 0.017);
+      // cifose torácica: leve curva para trás
+      const zTorax = (y) => LINHA_COLUNA - 0.022 * Math.sin(Math.PI * y / 0.32);
+      vertebras(torax, 0.012, 0.308, 9, 0.018, zTorax);
+      // costelas presas na coluna (a parte de trás de cada anel encosta na vértebra)
       for (let i = 0; i < 7; i++) {
         const y = 0.06 + i * 0.036;
         const rr = 0.095 + 0.03 * Math.sin((i + 1) / 8 * Math.PI);
-        add(torax, new THREE.TorusGeometry(rr, 0.007, 6, 28), ossoMat, [0, y, -0.005], [1.15, 0.75, 1], [Math.PI / 2 + 0.25, 0, 0]);
+        const zc = zTorax(y) + rr * 0.75 - 0.012;
+        add(torax, new THREE.TorusGeometry(rr, 0.007, 6, 28), ossoMat, [0, y, zc], [1.15, 0.75, 1], [Math.PI / 2 + 0.25, 0, 0]);
       }
-      add(torax, new THREE.BoxGeometry(0.025, 0.17, 0.012), ossoMat, [0, 0.17, 0.085]);
+      add(torax, new THREE.BoxGeometry(0.025, 0.17, 0.012), ossoMat, [0, 0.16, 0.095]);
       [1, -1].forEach(s => add(torax, cil(0.009, 0.17), ossoMat, [s * 0.085, 0.27, 0.035], null, [0, 0, s * (Math.PI / 2 - 0.15)]));
 
       const pescoco = R.pescoco = new THREE.Group(); pescoco.position.set(0, 0.32, -0.02); torax.add(pescoco);
       add(pescoco, cil(0.05, 0.1), casca, [0, 0.04, 0.0]);
-      vertebras(pescoco, 0.0, 0.07, -0.01, 0.015);
+      // lordose cervical (o grupo do pescoço já está 0.02 à frente, por isso o +0.02)
+      const zCervical = (y) => LINHA_COLUNA + 0.02 + 0.01 * Math.sin(Math.PI * y / 0.09);
+      vertebras(pescoco, 0.005, 0.08, 4, 0.015, zCervical);
 
       const cabeca = R.cabeca = new THREE.Group(); cabeca.position.set(0, 0.09, 0); pescoco.add(cabeca);
       add(cabeca, esf(0.112), casca, [0, 0.1, 0.015], [0.88, 1.08, 1.02]);
@@ -719,7 +735,21 @@
         this._tmp.project(this.camera);
         return { o, x: (this._tmp.x + 1) / 2 * w, y: (1 - this._tmp.y) / 2 * h, ok: this._tmp.z < 1 };
       }).sort((a, b) => a.y - b.y);
-      const larg = estreito ? 150 : 210;
+
+      // celular: etiquetas viram "chips" compactos no rodapé da tela 3D (sem cobrir o boneco)
+      this.overlay.classList.toggle('compacto', estreito);
+      if (estreito) {
+        ancoras.forEach(a => {
+          a.o.el.style.transform = '';
+          a.o.el.style.width = '';
+          a.o.el.style.opacity = 1;
+          a.o.linha.setAttribute('points', '');
+          a.o.ponto.setAttribute('cx', a.x); a.o.ponto.setAttribute('cy', a.y);
+        });
+        return;
+      }
+
+      const larg = 210;
       let ultimoFim = -Infinity;
       ancoras.forEach(a => {
         a.o.el.style.width = larg + 'px';

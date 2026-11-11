@@ -79,6 +79,7 @@
     if (destino === 'pausa') { iniciarPausa(); return; }
     if (destino === 'resultado' && !completo()) return;
     app.tela = destino;
+    $('#tela-app').dataset.tela = destino; // usado no CSS do celular (boneco fixo só no questionário)
     $('#painel-pergunta').hidden = destino !== 'quiz';
     $('#painel-resultado').hidden = destino !== 'resultado';
     $$('.lat-btn[data-ir]').forEach(b => b.classList.toggle('ativo', b.dataset.ir === destino));
@@ -456,13 +457,13 @@
     g.beginPath(); g.moveTo(pts[0].x, Y(0));
     pts.forEach(p => g.lineTo(p.x, p.y));
     g.lineTo(pts[pts.length - 1].x, Y(0)); g.closePath();
-    g.fillStyle = 'rgba(56,189,248,0.08)'; g.fill();
+    g.fillStyle = 'rgba(14,143,154,0.08)'; g.fill();
     // linha
     g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
     g.strokeStyle = grad; g.lineWidth = 2.5; g.lineJoin = 'round'; g.stroke();
     pts.forEach(p => {
       g.beginPath(); g.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
-      g.fillStyle = '#0f172a'; g.fill(); g.strokeStyle = '#38bdf8'; g.lineWidth = 2; g.stroke();
+      g.fillStyle = '#ffffff'; g.fill(); g.strokeStyle = '#0e8f9a'; g.lineWidth = 2; g.stroke();
     });
   }
   window.addEventListener('resize', desenharGrafico);
