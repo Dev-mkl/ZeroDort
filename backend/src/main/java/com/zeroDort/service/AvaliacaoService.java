@@ -2,7 +2,7 @@ package com.zeroDort.service;
 
 import com.zeroDort.dto.AvaliacaoRequest;
 import com.zeroDort.dto.AvaliacaoResponse;
-import com.zeroDort.dto.Perguntas;
+import com.zeroDort.dto.PerguntaItem;
 import com.zeroDort.model.ChaveAcesso;
 import com.zeroDort.model.Estudioso;
 import com.zeroDort.model.Usuario;
@@ -51,9 +51,9 @@ public class AvaliacaoService {
         );
     }
 
-    private Short gerarScore(List<Perguntas> perguntas) {
+    private Short gerarScore(List<PerguntaItem> perguntas) {
         Short soma = 0;
-        for (Perguntas pergunta : perguntas) {
+        for (PerguntaItem pergunta : perguntas) {
             soma = (short) (soma + pergunta.pontuacao());
         }
         return soma;

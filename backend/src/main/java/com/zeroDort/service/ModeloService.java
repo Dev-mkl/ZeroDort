@@ -1,6 +1,6 @@
 package com.zeroDort.service;
 
-import com.zeroDort.dto.Perguntas;
+import com.zeroDort.dto.PerguntaItem;
 import com.zeroDort.model.Corpo;
 import com.zeroDort.model.Modelo;
 import com.zeroDort.model.Usuario;
@@ -21,8 +21,8 @@ public class ModeloService {
     @Autowired
     private CorpoRepository corpoRepository;
 
-    public void cadastrarModelo(Usuario usuario, List<Perguntas> perguntas) {
-        for (Perguntas p : perguntas) {
+    public void cadastrarModelo(Usuario usuario, List<PerguntaItem> perguntas) {
+        for (PerguntaItem p : perguntas) {
             // Se a pergunta tiver uma região (ex: "lombar"), buscamos ou criamos no banco
             if (p.regiao() != null && !p.regiao().isEmpty()) {
                 Corpo corpo = corpoRepository.findByNome(p.regiao())

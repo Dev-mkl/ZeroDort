@@ -2,8 +2,8 @@ package com.zeroDort.dto;
 
 import java.util.List;
 
-public record Perguntas(
+public record PerguntaItem(
         String CodigoPergunta,
-        String CodigoResposta,
+        String RespostaId,
         List<String> regiao
 ) {}
