@@ -25,5 +25,5 @@ public class Usuario {
     private ChaveAcesso chaveAcesso;
 
     @Column(nullable = false)
-    private Short score;
+    private Double score;
 }

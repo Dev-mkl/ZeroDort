@@ -1,6 +1,5 @@
 package com.zeroDort.service;
 
-import com.zeroDort.dto.Perguntas;
 import com.zeroDort.model.Corpo;
 import com.zeroDort.model.Modelo;
 import com.zeroDort.model.Usuario;
@@ -10,7 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.Map;
 
 @Service
 public class ModeloService {
@@ -21,27 +20,21 @@ public class ModeloService {
     @Autowired
     private CorpoRepository corpoRepository;
 
-    public void cadastrarModelo(Usuario usuario, List<Perguntas> perguntas) {
-        for (Perguntas p : perguntas) {
-            // Se a pergunta tiver uma região (ex: "lombar"), buscamos ou criamos no banco
-            if (p.regiao() != null && !p.regiao().isEmpty()) {
-                Corpo corpo = corpoRepository.findByNome(p.regiao())
-                        .orElseGet(() -> {
-                            Corpo novoCorpo = new Corpo();
-                            novoCorpo.setNome(p.regiao());
-                            return corpoRepository.save(novoCorpo);
-                        });
+    public void cadastrarModelo(Usuario usuario, Map<Short, Double> pontuacoesPorCorpo) {
+        LocalDateTime dataAvaliacao = LocalDateTime.now();
+        for (Map.Entry<Short, Double> pontuacaoPorCorpo : pontuacoesPorCorpo.entrySet()) {
+            Corpo corpo = corpoRepository.findById(pontuacaoPorCorpo.getKey())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Região associada à pergunta não encontrada: " + pontuacaoPorCorpo.getKey()
+                    ));
 
-                // Salva o modelo ligando o usuário, a região e a pontuação
-                Modelo modelo = Modelo.builder()
-                        .usuario(usuario)
-                        .corpo(corpo)
-                        .pontuacao(p.pontuacao())
-                        .dataAvaliacao(LocalDateTime.now())
-                        .build();
-
-                modeloRepository.save(modelo);
-            }
+            Modelo modelo = Modelo.builder()
+                    .usuario(usuario)
+                    .corpo(corpo)
+                    .pontuacao(pontuacaoPorCorpo.getValue())
+                    .dataAvaliacao(dataAvaliacao)
+                    .build();
+            modeloRepository.save(modelo);
         }
     }
 }
