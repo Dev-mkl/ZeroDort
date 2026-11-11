@@ -1,7 +1,9 @@
 package com.zeroDort.dto;
 
+import java.util.List;
+
 public record Perguntas(
-        String pergunta,
-        String regiao, // Ex: "lombar", "cervical"
-        Short pontuacao
+        String CodigoPergunta,
+        String CodigoResposta,
+        List<String> regiao
 ) {}
