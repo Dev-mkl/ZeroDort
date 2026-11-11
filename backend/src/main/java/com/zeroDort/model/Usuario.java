@@ -16,14 +16,13 @@ public class Usuario {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Short id;
 
-    @ManyToOne
-    @JoinColumn(name = "estudioso_id", nullable = false)
-    private Estudioso estudioso;
+    @Column(nullable = false, length = 40)
+    private String nome;
 
     @OneToOne
     @JoinColumn(name = "chave_id", nullable = false, unique = true)
     private ChaveAcesso chaveAcesso;
 
     @Column(nullable = false)
-    private Short score;
+    private Double score;
 }

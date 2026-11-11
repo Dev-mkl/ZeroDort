@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class ChaveAcessoService {
@@ -15,6 +16,14 @@ public class ChaveAcessoService {
 
     public List<ChaveAcesso> buscarChaveAcessoDisponivel(){
         return chaveAcessoRepository.findAllByUtilizada(false);
+    }
+
+    public ChaveAcesso gerarChaveAcesso() {
+        ChaveAcesso chaveAcesso = ChaveAcesso.builder()
+                .codigo(UUID.randomUUID().toString())
+                .utilizada(false)
+                .build();
+        return chaveAcessoRepository.save(chaveAcesso);
     }
 
     public boolean marcarChaveUtilizada(Short id) {
